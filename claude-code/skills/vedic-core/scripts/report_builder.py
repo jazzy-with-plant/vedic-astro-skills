@@ -6,6 +6,7 @@ Dynamically numbers sections — no hardcoded "Part II" when Part I is missing.
 
 Usage:
   python report_builder.py <folder> [--name "Name"] [--lagna "Cancer"] [--lang cn|en|ja]
+                           [--audience beginner|technical]
 
 Auto-detected file patterns:
   Identity:     p0_identity.md (Pro only)
@@ -204,6 +205,30 @@ hr { border: none; border-top: 1px dashed var(--border-light); margin: 24px 0; }
   margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--border-light);
   font-size: 10px; color: var(--text-muted); text-align: center;
 }
+
+.reader-intro {
+  background: linear-gradient(135deg, #f2ead8, #faf7f0);
+  border: 1px solid var(--border); border-left: 4px solid var(--gold-line);
+  padding: 18px 20px; margin: 0 0 24px; border-radius: 5px;
+}
+.reader-intro strong { color: var(--brown); }
+.reader-details {
+  border: 1px solid var(--border); border-radius: 6px;
+  margin: 12px 0; background: rgba(255,255,255,.2); overflow: hidden;
+}
+.reader-details > summary {
+  cursor: pointer; list-style: none; padding: 13px 16px;
+  color: var(--brown); font-weight: 600; background: var(--parchment-deep);
+}
+.reader-details > summary::-webkit-details-marker { display: none; }
+.reader-details > summary::after { content: "＋"; float: right; color: var(--gold); }
+.reader-details[open] > summary::after { content: "－"; }
+.reader-details-body { padding: 8px 18px 16px; }
+.reader-note { color: var(--text-muted); font-size: 12px; margin-bottom: 18px; }
+
+@media print {
+  .reader-details { break-inside: avoid; }
+}
 """
 
 # ── Section Registry ──
@@ -219,6 +244,10 @@ hr { border: none; border-top: 1px dashed var(--border-light); margin: 24px 0; }
 # This means: if p0_identity.md doesn't exist, planets become "第一部分" automatically.
 
 SECTION_REGISTRY = [
+    # ── Beginner summary (generated before packaging) ──
+    (1,  "summary",     "summary", "", "先看这页：核心结论",       "Start Here: Key Takeaways",
+     ["beginner_summary.md", "client_summary.md"]),
+
     # ── Identity / Overview ──
     # Pro: p0_identity.md (身份定锚)
     # Open source: p1_overview.md (身份概览)
@@ -307,6 +336,7 @@ SECTION_REGISTRY = [
 ]
 
 JA_SECTION_TITLES = {
+    "summary": "最初に読む要点",
     "identity": "出生図の中心テーマ",
     "planets_a": "惑星監査（太陽・月）",
     "planets_b": "惑星監査（火星・水星）",
@@ -484,6 +514,26 @@ def find_files(folder):
     return found
 
 
+def find_files_multi(folders):
+    """Scan the report root and optional parts/ without dropping either side.
+
+    Root artifacts win for fixed keys. Q&A from both locations is combined.
+    """
+    merged = {}
+    for folder in folders:
+        if not os.path.isdir(folder):
+            continue
+        print(f"  Scanning: {folder}")
+        current = find_files(folder)
+        for key, value in current.items():
+            if key == "qa" and key in merged:
+                old = merged[key]
+                merged[key] = (*old[:5], old[5] + "\n\n---\n\n" + value[5])
+            elif key not in merged:
+                merged[key] = value
+    return merged
+
+
 def detect_package(found, lang="cn", brand=None):
     """Detect which skill packages are present."""
     has_core = any(v[1].startswith("G") for v in found.values() if v[1] in ("G0","G1","G2","G3","G4","G5"))
@@ -533,19 +583,45 @@ def detect_package(found, lang="cn", brand=None):
 
 # ── HTML builders ──
 
-def build_cover(name, lagna, gender, status, pkg, desc, lang="cn"):
+def build_cover(name, lagna, gender, status, pkg, desc, lang="cn", audience="beginner"):
     top = {
         "cn": "数据驱动吠陀占星",
         "en": "DATA-DRIVEN VEDIC ASTROLOGY",
         "ja": "DATA-DRIVEN VEDIC ASTROLOGY",
     }[lang]
     title = {"cn": "吠陀占星", "en": "Vedic Astrology", "ja": "ヴェーダ占星術"}[lang]
-    accent = {"cn": "完 整 解 读", "en": "Complete Reading", "ja": "総合鑑定"}[lang]
+    if audience == "beginner":
+        accent = {"cn": "新 手 友 好 解 读", "en": "Reader-Friendly Guide", "ja": "読みやすい鑑定"}[lang]
+    else:
+        accent = {"cn": "完 整 解 读", "en": "Complete Reading", "ja": "総合鑑定"}[lang]
     L = {
-        "cn": ["客户", "上升", "信息", "套餐", "体系", "软件", "大运", "量化"],
-        "en": ["Client", "Lagna", "Profile", "Package", "System", "Software", "Dasha", "Metrics"],
-        "ja": ["クライアント", "ラグナ", "基本情報", "レポート", "体系", "ソフトウェア", "ダシャー", "指標"],
+        "cn": ["客户", "上升", "信息", "内容", "体系", "软件", "大运", "量化"],
+        "en": ["Client", "Lagna", "Profile", "Contents", "System", "Software", "Dasha", "Metrics"],
+        "ja": ["クライアント", "ラグナ", "基本情報", "内容", "体系", "ソフトウェア", "ダシャー", "指標"],
     }[lang]
+    beginner_note = {
+        "cn": "正文按生活主题整理；完整计算依据收在可展开的技术附录。",
+        "en": "The main reading is organized by life topic. Full calculations remain available in the expandable appendix.",
+        "ja": "本文は生活テーマ別に整理し、計算根拠は展開できる技術付録に収録しています。",
+    }[lang]
+    read_label = {"cn": "阅读", "en": "Reading", "ja": "読み方"}[lang]
+    if audience == "beginner":
+        meta = f"""
+    <div><dt>{L[0]}</dt><dd>{name}</dd></div>
+    <div><dt>{L[1]}</dt><dd>{lagna}</dd></div>
+    <div><dt>{L[2]}</dt><dd>{gender} | {status}</dd></div>
+    <div><dt>{L[3]}</dt><dd>{pkg}</dd></div>
+    <div style="grid-column:1 / -1"><dt>{read_label}</dt><dd>{beginner_note}</dd></div>"""
+    else:
+        meta = f"""
+    <div><dt>{L[0]}</dt><dd>{name}</dd></div>
+    <div><dt>{L[1]}</dt><dd>{lagna}</dd></div>
+    <div><dt>{L[2]}</dt><dd>{gender} | {status}</dd></div>
+    <div><dt>{L[3]}</dt><dd>{pkg}</dd></div>
+    <div><dt>{L[4]}</dt><dd>Parashari Jyotish | KN Rao School</dd></div>
+    <div><dt>{L[5]}</dt><dd>Jagannatha Hora v8.0 | True Chitrapaksha (Lahiri系, 差&lt;1′)</dd></div>
+    <div><dt>{L[6]}</dt><dd>Vimsottari (Mahadasha + Antardasha)</dd></div>
+    <div><dt>{L[7]}</dt><dd>Shadbala, Ashtakavarga (SAV/BAV), D9 Navamsha</dd></div>"""
     return f"""
 <div class="cover">
   <div class="cover-top">{top}</div>
@@ -554,14 +630,7 @@ def build_cover(name, lagna, gender, status, pkg, desc, lang="cn"):
   <div class="cover-ornament"></div>
   <div class="subtitle">{desc}</div>
   <div class="cover-meta"><div class="cover-meta-grid">
-    <div><dt>{L[0]}</dt><dd>{name}</dd></div>
-    <div><dt>{L[1]}</dt><dd>{lagna}</dd></div>
-    <div><dt>{L[2]}</dt><dd>{gender} | {status}</dd></div>
-    <div><dt>{L[3]}</dt><dd>{pkg}</dd></div>
-    <div><dt>{L[4]}</dt><dd>Parashari Jyotish | KN Rao School</dd></div>
-    <div><dt>{L[5]}</dt><dd>Jagannatha Hora v8.0 | True Chitrapaksha (Lahiri系, 差<1′)</dd></div>
-    <div><dt>{L[6]}</dt><dd>Vimsottari (Mahadasha + Antardasha)</dd></div>
-    <div><dt>{L[7]}</dt><dd>Shadbala, Ashtakavarga (SAV/BAV), D9 Navamsha</dd></div>
+    {meta}
   </div></div>
 </div>"""
 
@@ -585,9 +654,12 @@ def _fix_table_spacing(text):
     return '\n'.join(fixed)
 
 
+def render_markdown(md_text):
+    return markdown.markdown(_fix_table_spacing(md_text), extensions=["tables", "fenced_code"])
+
+
 def build_section(num, title, md_text, lang="cn"):
-    md_text = _fix_table_spacing(md_text)
-    body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
+    body = render_markdown(md_text)
     section_label = "セクション" if lang == "ja" else "Section"
     return f"""
 <div class="section">
@@ -597,6 +669,107 @@ def build_section(num, title, md_text, lang="cn"):
   </div>
   {body}
 </div>"""
+
+
+def build_html_section(num, title, body_html, lang="cn"):
+    section_label = "セクション" if lang == "ja" else "Section"
+    return f"""
+<div class="section">
+  <div class="section-header">
+    <div class="section-number">{section_label} {num}</div>
+    <h2>{title}</h2>
+  </div>
+  {body_html}
+</div>"""
+
+
+BEGINNER_TITLES = {
+    "cn": {
+        "summary": "先看这页：核心结论",
+        "career": "事业与工作",
+        "love": "感情与关系",
+        "life": "生活基础与个人成长",
+        "qa": "结合实际经历的补充",
+        "technical": "技术依据与完整审计",
+    },
+    "en": {
+        "summary": "Start Here: Key Takeaways",
+        "career": "Career and Work",
+        "love": "Love and Relationships",
+        "life": "Life Foundations and Growth",
+        "qa": "Follow-up Notes",
+        "technical": "Technical Evidence and Full Audit",
+    },
+    "ja": {
+        "summary": "最初に読む要点",
+        "career": "仕事とキャリア",
+        "love": "恋愛とパートナーシップ",
+        "life": "生活基盤と成長",
+        "qa": "実体験を踏まえた補足",
+        "technical": "技術的根拠と完全監査",
+    },
+}
+
+
+def _details(title, md_text, lang):
+    hint = {
+        "cn": "展开阅读完整分析",
+        "en": "Open the full analysis",
+        "ja": "詳細な分析を開く",
+    }[lang]
+    return (
+        '<details class="reader-details">'
+        f'<summary>{title}<span class="reader-hint"> · {hint}</span></summary>'
+        f'<div class="reader-details-body">{render_markdown(md_text)}</div>'
+        '</details>'
+    )
+
+
+def build_beginner_sections(found, lang="cn"):
+    """Group the audit into reader-facing themes and collapse technical depth."""
+    ordered = sorted(found.items(), key=lambda x: x[1][0])
+    buckets = {k: [] for k in ("summary", "career", "love", "life", "qa", "technical")}
+    for key, item in ordered:
+        priority, group, sub, cn_title, en_title, content = item
+        title = localized_base_title(key, group, sub, cn_title, en_title, lang)
+        if key == "summary":
+            buckets["summary"].append((title, content))
+        elif group == "G6":
+            buckets["career"].append((title, content))
+        elif group == "G7":
+            buckets["love"].append((title, content))
+        elif key == "qa":
+            buckets["qa"].append((title, content))
+        elif group in ("G0", "G4", "G5"):
+            buckets["life"].append((title, content))
+        else:
+            buckets["technical"].append((title, content))
+
+    sections = []
+    labels = BEGINNER_TITLES[lang]
+    if buckets["summary"]:
+        summary_html = "".join(render_markdown(content) for _, content in buckets["summary"])
+    else:
+        msg = {
+            "cn": "<strong>建议先生成 beginner_summary.md。</strong> 当前报告仍已按主题整理；事业、感情和技术细节可按需展开。",
+            "en": "<strong>Generate beginner_summary.md for the best reading experience.</strong> The available material is still grouped by topic below.",
+            "ja": "<strong>beginner_summary.md を生成すると、さらに読みやすくなります。</strong> 以下の内容はテーマ別に整理されています。",
+        }[lang]
+        summary_html = f'<div class="reader-intro">{msg}</div>'
+    sections.append((labels["summary"], summary_html))
+
+    for bucket in ("career", "love", "life", "qa", "technical"):
+        if not buckets[bucket]:
+            continue
+        note = {
+            "cn": "以下为完整依据。第一次阅读时，可以只看上面的核心结论；需要追溯原因时再展开。",
+            "en": "The full supporting analysis is available below. Read it only when you want the reasoning behind the summary.",
+            "ja": "以下は詳細な根拠です。最初は要点だけを読み、必要なときに展開してください。",
+        }[lang]
+        body = f'<p class="reader-note">{note}</p>'
+        body += "".join(_details(title, content, lang) for title, content in buckets[bucket])
+        sections.append((labels[bucket], body))
+    return sections
 
 
 # ── Main ──
@@ -622,6 +795,8 @@ Examples:
                         help="Comma-separated sections to include: core,career,love,qa,rectify (default: all)")
     parser.add_argument("--brand", default=None, choices=["pro", "open"],
                         help="Force brand: 'pro' or 'open' (default: auto-detect)")
+    parser.add_argument("--audience", default="beginner", choices=["beginner", "technical"],
+                        help="Reader mode: beginner groups topics and collapses audit detail; technical preserves every section")
     args = parser.parse_args()
 
     folder = args.folder.rstrip("/\\")
@@ -629,15 +804,16 @@ Examples:
         print(f"Error: {folder} is not a directory")
         sys.exit(1)
 
-    # Check for 'parts/' subfolder
+    # Scan both root and 'parts/' so Q&A never hides the main report.
     parts_dir = os.path.join(folder, "parts")
-    search_dir = parts_dir if os.path.isdir(parts_dir) else folder
-    print(f"  Scanning: {search_dir}\n")
-
-    found = find_files(search_dir)
+    search_dirs = [folder]
+    if os.path.isdir(parts_dir):
+        search_dirs.append(parts_dir)
+    found = find_files_multi(search_dirs)
+    print()
 
     if not found:
-        print(f"\nError: No MD files found in {search_dir}")
+        print(f"\nError: No MD files found in {', '.join(search_dirs)}")
         sys.exit(1)
 
     # --include filter
@@ -652,6 +828,7 @@ Examples:
         }
         allowed_groups = set()
         allowed_keys = set()
+        allowed_keys.add("summary")
         for g in include_set:
             g = g.strip()
             if g in group_map:
@@ -672,37 +849,37 @@ Examples:
     print(f"\n  Version: {version}")
     print(f"  Package: {pkg} | Language: {lang}")
 
-    # Sort sections by priority
-    ordered_items = sorted(found.items(), key=lambda x: x[1][0])
-
-    # Assign dynamic part numbers based on groups
-    group_to_part = {}  # group_id -> part_number
-    next_part = 1
-    for key, (priority, group, sub, cn_title, en_title, content) in ordered_items:
-        if group == "appendix":
-            continue  # appendix doesn't get a part number
-        if group not in group_to_part:
-            group_to_part[group] = next_part
-            next_part += 1
-
-    # Build ordered sections with titles
-    sections = []  # [(display_title, html_content)]
-    sec_num = 1
-    for key, (priority, group, sub, cn_title, en_title, content) in ordered_items:
-        base = localized_base_title(key, group, sub, cn_title, en_title, lang)
-        part_num = group_to_part.get(group, 0)
-        title = make_section_title(group, sub, base, part_num, lang)
-        sections.append((title, content))
-        sec_num += 1
+    if args.audience == "beginner":
+        sections = build_beginner_sections(found, lang)
+        sections_are_html = True
+    else:
+        ordered_items = sorted(found.items(), key=lambda x: x[1][0])
+        group_to_part = {}
+        next_part = 1
+        for key, (priority, group, sub, cn_title, en_title, content) in ordered_items:
+            if group == "appendix":
+                continue
+            if group not in group_to_part:
+                group_to_part[group] = next_part
+                next_part += 1
+        sections = []
+        for key, (priority, group, sub, cn_title, en_title, content) in ordered_items:
+            base = localized_base_title(key, group, sub, cn_title, en_title, lang)
+            part_num = group_to_part.get(group, 0)
+            sections.append((make_section_title(group, sub, base, part_num, lang), content))
+        sections_are_html = False
 
     # Build HTML
-    cover = build_cover(args.name, args.lagna, args.gender, args.status, pkg, desc, lang)
+    cover = build_cover(args.name, args.lagna, args.gender, args.status, pkg, desc, lang, args.audience)
     toc = build_toc(sections, lang)
 
     sections_html = []
     for i, (title, content) in enumerate(sections, 1):
         num_str = f"{i:02d}"
-        sections_html.append(build_section(num_str, title, content, lang))
+        if sections_are_html:
+            sections_html.append(build_html_section(num_str, title, content, lang))
+        else:
+            sections_html.append(build_section(num_str, title, content, lang))
 
     footer_cn = """<div class="footer-note">
   本报告基于传统吠陀占星方法（Parashari Jyotish | KN Rao School）。<br>
@@ -738,7 +915,8 @@ Examples:
     size = os.path.getsize(out) / 1024
     print(f"\n  [OK] Output: {out} ({size:.0f} KB)")
     print(f"  -> Open in browser -> Ctrl+P -> Save as PDF")
-    print(f"\n  Sections: {len(sections)}")
+    print(f"\n  Audience: {args.audience}")
+    print(f"  Sections: {len(sections)}")
     for title, _ in sections:
         print(f"    • {title}")
 

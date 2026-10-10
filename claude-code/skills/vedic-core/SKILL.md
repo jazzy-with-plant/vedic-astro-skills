@@ -226,6 +226,13 @@ description: "Run the standard full Vedic/Jyotish natal analysis from a verified
 **Step 1-5分析阶段不向用户提问，全程自动写报告。用户只需等报告写完后阅读。**
 **不要在聊天框里复述这条规则给用户看。**
 
+### 新手版总览文件（Step 5完成后）
+
+在完整审计文件写完后，额外生成 `beginner_summary.md`。它不新增判断，只把已有结论整理成
+“一句话总览、事业与工作、感情与关系、生活基础、未来时间线、行动清单”六个板块。
+正文只保留会影响选择的结论和时间窗口；行星参数、宫位审计、分盘宫主及量化表格继续留在
+原始文件，由报告生成器折叠到技术附录。详细格式与语言约束见 `resources/report_rules.md`。
+
 ---
 
 ## Step 0: 身份概览
@@ -1233,7 +1240,8 @@ Step 4 允许以已确认的事实事件作为盘面信号的佐证，提升报�
 **参考：resources/report_rules.md**
 
 当用户说"生成报告""打包""导出HTML"时，运行`scripts/report_builder.py`。
-支持`--include`参数选择性打包。
+默认先生成或更新`beginner_summary.md`，再用`--audience beginner`打包；用户明确需要完整技术审计时，
+改用`--audience technical`。支持`--include`参数选择性打包。
 
 ## 关键原则
 
